@@ -23,6 +23,8 @@
 #include "zdf.h"
 #include "timer.h"
 
+extern void spec_advance_cuda(t_part *h_parts, int np, float tem, float dt_dx);		//-----------
+
 static double _spec_time = 0.0;
 static uint64_t _spec_npush = 0;
 
@@ -559,7 +561,6 @@ void spec_new( t_species* spec, char name[], const float m_q, const int ppc,
         for(i=0; i<3; i++) spec -> uth[i] = uth[i];
     } else {
         for(i=0; i<3; i++) spec -> uth[i] = 0;
-    }
 
     // Reset iteration number
     spec -> iter = 0;
@@ -918,123 +919,20 @@ int ltrim( float x )
  */
 void spec_advance( t_species* spec, t_emf* emf, t_current* current )
 {
-
     uint64_t t0;
     t0 = timer_ticks();
 
     const float tem   = 0.5 * spec->dt/spec -> m_q;
     const float dt_dx = spec->dt / spec->dx;
-
-    // Auxiliary values for current deposition
-    const float qnx = spec -> q *  spec->dx / spec->dt;
-
     const int nx0 = spec -> nx;
 
+    // A variável energy é inicializada a 0 já que o cálculo foi movido para a GPU
     double energy = 0;
 
-    // Advance particles
-    for (int i=0; i<spec->np; i++) {
+    // --- CHAMADA PARA A GPU (Substitui o loop original) ---
+    spec_advance_cuda(spec->part, spec->np, tem, dt_dx);
 
-        float3 Ep, Bp;
-        float utx, uty, utz;
-        float ux, uy, uz, u2;
-        float gamma, rg, gtem, otsq;
-
-        float x1;
-
-        int di;
-        float dx;
-
-        // Load particle momenta
-        ux = spec -> part[i].ux;
-        uy = spec -> part[i].uy;
-        uz = spec -> part[i].uz;
-
-        // interpolate fields
-        interpolate_fld( emf -> E_part, emf -> B_part, &spec -> part[i], &Ep, &Bp );
-        // Ep.x = Ep.y = Ep.z = Bp.x = Bp.y = Bp.z = 0;
-
-        // advance u using Boris scheme
-        Ep.x *= tem;
-        Ep.y *= tem;
-        Ep.z *= tem;
-
-        utx = ux + Ep.x;
-        uty = uy + Ep.y;
-        utz = uz + Ep.z;
-
-        // Perform first half of the rotation
-        // Get time centered gamma
-        u2 = utx*utx + uty*uty + utz*utz;
-        gamma = sqrtf( 1 + u2 );
-
-        // Accumulate time centered energy
-        energy += u2 / ( 1 + gamma );
-
-        gtem = tem / gamma;
-
-        Bp.x *= gtem;
-        Bp.y *= gtem;
-        Bp.z *= gtem;
-
-        otsq = 2.0f / ( 1.0f + Bp.x*Bp.x + Bp.y*Bp.y + Bp.z*Bp.z );
-
-        ux = utx + uty*Bp.z - utz*Bp.y;
-        uy = uty + utz*Bp.x - utx*Bp.z;
-        uz = utz + utx*Bp.y - uty*Bp.x;
-
-        // Perform second half of the rotation
-
-        Bp.x *= otsq;
-        Bp.y *= otsq;
-        Bp.z *= otsq;
-
-        utx += uy*Bp.z - uz*Bp.y;
-        uty += uz*Bp.x - ux*Bp.z;
-        utz += ux*Bp.y - uy*Bp.x;
-
-        // Perform second half of electric field acceleration
-        ux = utx + Ep.x;
-        uy = uty + Ep.y;
-        uz = utz + Ep.z;
-
-        // Store new momenta
-        spec -> part[i].ux = ux;
-        spec -> part[i].uy = uy;
-        spec -> part[i].uz = uz;
-
-        // push particle
-        rg = 1.0f / sqrtf(1.0f + ux*ux + uy*uy + uz*uz);
-
-        dx = dt_dx * rg * ux;
-
-        x1 = spec -> part[i].x + dx;
-
-        di = ltrim(x1);
-
-        x1 -= di;
-
-        float qvy = spec->q * uy * rg;
-        float qvz = spec->q * uz * rg;
-
-        // deposit current using Eskirepov method
-        // dep_current_esk( spec -> part[i].ix, di,
-        // 				 spec -> part[i].x, x1,
-        // 				 qnx, qvy, qvz,
-        // 				 current );
-
-        dep_current_zamb( spec -> part[i].ix, di,
-                         spec -> part[i].x, dx,
-                         qnx, qvy, qvz,
-                         current );
-
-        // Store results
-        spec -> part[i].x = x1;
-        spec -> part[i].ix += di;
-
-    }
-
-    // Store energy
+    // Store energy (atualmente 0 até movermos o cálculo de energia para o Kernel)
     spec -> energy = spec-> q * spec -> m_q * energy * spec -> dx;
 
     // Advance internal iteration number
@@ -1044,7 +942,7 @@ void spec_advance( t_species* spec, t_emf* emf, t_current* current )
     if ( spec -> moving_window || spec -> bc_type == PART_BC_OPEN ){
 
         // Move simulation window if needed
-        if (spec -> moving_window )	spec_move_window( spec );
+        if (spec -> moving_window ) spec_move_window( spec );
 
         // Use absorbing boundaries along x
         int i = 0;

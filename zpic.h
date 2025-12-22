@@ -14,11 +14,16 @@
  * @brief Three component vector
  * 
  */
+
+#include <cuda_runtime.h>                               // Adiciona isto para importar o float3 do CUDA
+
+/*
 typedef struct Float3 {
 	float x;	///< x vector component
-	float y;	///< y vector component
+	float y;	///< y vector component			//------------
 	float z;	///< z vector component
 } float3;
+*/
 
 /* ANSI C does not define math constants */
 

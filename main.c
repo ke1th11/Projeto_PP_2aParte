@@ -17,6 +17,8 @@ You should have received a copy of the GNU Affero General Public License
 along with the ZPIC Educational code suite. If not, see <http://www.gnu.org/licenses/>.
 */
 
+extern void showIterNumber(int i);             //------------------
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -58,7 +60,7 @@ int main (int argc, const char * argv[]) {
 
 	for (n=0,t=0.0; t<=sim.tmax; n++, t=n*sim.dt) {
         //printf("n = %i, t = %f\n",n,t);
-
+		showIterNumber(n);					//----------------
 		if ( report ( n , sim.ndump ) )	sim_report( &sim );
 
 		sim_iter( &sim );
