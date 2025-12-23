@@ -15,6 +15,9 @@
 #include "simulation.h"
 #include "timer.h"
 
+extern void cuda_init(int np, int nx);			//----------
+extern void cuda_final();				//----------
+
 /**
  * @brief Checks if there should be a report at this timestep
  * 
@@ -107,7 +110,7 @@ void sim_new( t_simulation* sim, int nx, float box, float dt, float tmax, int nd
 		fprintf(stderr, "Invalid timestep, courant condition violation, dtmax = %f \n", cour );
 		exit(-1);
 	}
-
+	cuda_init(sim->species[0].np, nx);	//----------
 }
 
 /**
@@ -239,5 +242,5 @@ void sim_delete( t_simulation* sim ) {
 
 	current_delete( &sim->current );
 	emf_delete( &sim->emf );
-
+	cuda_final();			//--------
 }

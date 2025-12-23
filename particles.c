@@ -23,7 +23,7 @@
 #include "zdf.h"
 #include "timer.h"
 
-extern void spec_advance_cuda(t_part *h_parts, int np, float tem, float dt_dx);		//-----------
+extern void spec_advance_cuda(t_part *h_parts, int np, void* h_E, void* h_B, int nx, float tem, float dt_dx);   //-----------
 
 static double _spec_time = 0.0;
 static uint64_t _spec_npush = 0;
@@ -561,6 +561,7 @@ void spec_new( t_species* spec, char name[], const float m_q, const int ppc,
         for(i=0; i<3; i++) spec -> uth[i] = uth[i];
     } else {
         for(i=0; i<3; i++) spec -> uth[i] = 0;
+    }
 
     // Reset iteration number
     spec -> iter = 0;
@@ -930,7 +931,7 @@ void spec_advance( t_species* spec, t_emf* emf, t_current* current )
     double energy = 0;
 
     // --- CHAMADA PARA A GPU (Substitui o loop original) ---
-    spec_advance_cuda(spec->part, spec->np, tem, dt_dx);
+    spec_advance_cuda(spec->part, spec->np, emf->E, emf->B, spec->nx, tem, dt_dx);	//-------------
 
     // Store energy (atualmente 0 até movermos o cálculo de energia para o Kernel)
     spec -> energy = spec-> q * spec -> m_q * energy * spec -> dx;

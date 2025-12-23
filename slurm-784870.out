@@ -1,0 +1,14 @@
+Lmod has detected the following error: The following module(s) are unknown:
+"CUDA/11.8.0"
+
+Please check the spelling or version number. Also try "module spider ..."
+It is also possible your cache file is out-of-date; it may help to try:
+  $ module --ignore_cache load "CUDA/11.8.0"
+
+Also make sure that all modulefiles written in TCL start with the string
+#%Module
+
+
+
+slurmstepd: error: execve(): /home/uminhopp006/zpic_parte2/./zpic: No such file or directory
+srun: error: gnx502: task 0: Exited with exit code 2
