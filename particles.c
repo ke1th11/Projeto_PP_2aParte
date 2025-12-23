@@ -23,7 +23,8 @@
 #include "zdf.h"
 #include "timer.h"
 
-extern void spec_advance_cuda(t_part *h_parts, int np, void* h_E, void* h_B, int nx, float tem, float dt_dx);   //-----------
+// Atualiza a declaração para incluir o J e o qnx
+extern void spec_advance_cuda(t_part *h_parts, int np, void* h_E, void* h_B, void* h_J, int nx, float tem, float dt_dx, float qnx);   //-----------
 
 static double _spec_time = 0.0;
 static uint64_t _spec_npush = 0;
@@ -926,12 +927,24 @@ void spec_advance( t_species* spec, t_emf* emf, t_current* current )
     const float tem   = 0.5 * spec->dt/spec -> m_q;
     const float dt_dx = spec->dt / spec->dx;
     const int nx0 = spec -> nx;
+    const float qnx = spec->q * spec->m_q / spec->dt;		//----------
 
     // A variável energy é inicializada a 0 já que o cálculo foi movido para a GPU
     double energy = 0;
 
     // --- CHAMADA PARA A GPU (Substitui o loop original) ---
-    spec_advance_cuda(spec->part, spec->np, emf->E, emf->B, spec->nx, tem, dt_dx);	//-------------
+    spec_advance_cuda(spec->part, spec->np, emf->E, emf->B, current->J_buf, spec->nx, tem, dt_dx, qnx);	//-------------
+    
+    double total_u2 = 0;						//----------
+    for (int i = 0; i < spec->np; i++) {
+        float ux = spec->part[i].ux;
+        float uy = spec->part[i].uy;
+        float uz = spec->part[i].uz;
+        
+        // Energia cinética = sqrt(1 + u^2) - 1
+        total_u2 += sqrt(1.0 + ux*ux + uy*uy + uz*uz) - 1.0;
+    }
+    energy = total_u2;							//----ate aqui---
 
     // Store energy (atualmente 0 até movermos o cálculo de energia para o Kernel)
     spec -> energy = spec-> q * spec -> m_q * energy * spec -> dx;
