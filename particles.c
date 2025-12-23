@@ -919,6 +919,8 @@ int ltrim( float x )
  * @param emf       EM fields
  * @param current   Current density
  */
+
+/*
 void spec_advance( t_species* spec, t_emf* emf, t_current* current )
 {
     uint64_t t0;
@@ -985,6 +987,145 @@ void spec_advance( t_species* spec, t_emf* emf, t_current* current )
     // Timing info
     _spec_npush += spec -> np;
     _spec_time += timer_interval_seconds( t0, timer_ticks() );
+}
+
+
+void spec_advance( t_species* spec, t_emf* emf, t_current* current )
+{
+    const float tem   = 0.5f * spec->dt / spec->m_q;
+    const float dt_dx = spec->dt / spec->dx;
+    const float qnx   = spec->q * spec->nx;
+
+    // --------------------------------------------------
+    // 1) AVANÇO DAS PARTÍCULAS NA GPU (Boris + posição)
+    // --------------------------------------------------
+    spec_advance_cuda(
+        spec->part,                          // partículas
+        spec->np,                            // nº partículas
+        emf->E,                              // campo E
+        emf->B,                              // campo B
+        &current->J_buf[current->gc[0]],     // corrente (buffer correto!)
+        spec->nx,                            // nº de células
+        tem,
+        dt_dx,
+        qnx
+    );
+
+    // --------------------------------------------------
+    // 2) DEPOSIÇÃO DE CORRENTE (CPU, ZPIC ORIGINAL)
+    // --------------------------------------------------
+    for (int i = 0; i < spec->np; i++) {
+
+        int ix0 = spec->part[i].ix;
+        int di  = ltrim(spec->part[i].x);
+
+#if CURRENT_DEPOSITION == CURRENT_ZAMB
+        dep_current_zamb(
+            ix0, di,
+            spec->part[i].x,
+            spec->part[i].ux,
+            spec->part[i].uy,
+            spec->part[i].uz,
+            qnx,
+            current
+        );
+#else
+        dep_current_esk(
+            ix0, di,
+            spec->part[i].x,
+            spec->part[i].ux,
+            spec->part[i].uy,
+            spec->part[i].uz,
+            qnx,
+            current
+        );
+#endif
+    }
+}
+
+
+void spec_advance( t_species* spec, t_emf* emf, t_current* current )
+{
+    const float tem   = 0.5f * spec->dt / spec->m_q;
+    const float dt_dx = spec->dt / spec->dx;
+    // O valor de qnx para o ZPIC costuma ser spec->q * spec->m_q / spec->dt
+    // Mas para o teu kernel, vamos manter a escala que está a funcionar:
+    const float qnx   = spec->q * spec->m_q / spec->dt;
+
+    // 1) AVANÇO E DEPOSIÇÃO NA GPU
+    // Aqui a GPU já move as partículas E guarda a corrente no J_buf
+    spec_advance_cuda(
+        spec->part,
+        spec->np,
+        emf->E,
+        emf->B,
+        &current->J_buf[current->gc[0]],
+        spec->nx,
+        tem,
+        dt_dx,
+        qnx
+    );
+
+    // 2) CÁLCULO DA ENERGIA NO CPU (Essencial para não dar 0.00)
+    double total_u2 = 0;
+    for (int i = 0; i < spec->np; i++) {
+        float ux = spec->part[i].ux;
+        float uy = spec->part[i].uy;
+        float uz = spec->part[i].uz;
+        total_u2 += sqrt(1.0 + ux*ux + uy*uy + uz*uz) - 1.0;
+    }
+    spec->energy = spec->q * spec->m_q * total_u2 * spec->dx;
+
+    // 3) ATUALIZAR ITERAÇÃO E FRONTEIRAS (Lógica original do ZPIC)
+    spec->iter += 1;
+
+    // Se a simulação for periódica (caso padrão do ZPIC simples)
+    if (spec->bc_type == PART_BC_PERIODIC) {
+        for (int i = 0; i < spec->np; i++) {
+            if (spec->part[i].ix < 0) spec->part[i].ix += spec->nx;
+            if (spec->part[i].ix >= spec->nx) spec->part[i].ix -= spec->nx;
+        }
+    }
+}
+*/
+
+void spec_advance( t_species* spec, t_emf* emf, t_current* current )
+{
+    // 1. Iniciar o cronómetro (para o relatório final não dar 0.00s)
+    uint64_t t0 = timer_ticks();
+
+    const float tem   = 0.5f * spec->dt / spec->m_q;
+    const float dt_dx = spec->dt / spec->dx;
+    const float qnx   = spec->q * spec->nx;
+
+    // 2. Chamada para a GPU (Boris + Deposição de Corrente)
+    // Passamos o offset &current->J_buf[current->gc[0]] para alinhar as Guard Cells
+    spec_advance_cuda(
+        spec->part,
+        spec->np,
+        emf->E,
+        emf->B,
+        &current->J_buf[current->gc[0]],
+        spec->nx,
+        tem,
+        dt_dx,
+        qnx
+    );
+
+    // 3. Cálculo da Energia Cinética no CPU (Para o relatório não dar Energy particles = 0)
+    double total_u2 = 0;
+    for (int i = 0; i < spec->np; i++) {
+        float ux = spec->part[i].ux;
+        float uy = spec->part[i].uy;
+        float uz = spec->part[i].uz;
+        total_u2 += sqrt(1.0 + ux*ux + uy*uy + uz*uz) - 1.0;
+    }
+    spec->energy = spec->q * spec->m_q * total_u2 * spec->dx;
+
+    // 4. Atualizar estatísticas de iteração e tempo (Crucial para o benchmark)
+    spec->iter += 1;
+    _spec_npush += spec->np;
+    _spec_time  += timer_interval_seconds(t0, timer_ticks());
 }
 
 /*********************************************************************************************
