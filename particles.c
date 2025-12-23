@@ -933,7 +933,9 @@ void spec_advance( t_species* spec, t_emf* emf, t_current* current )
     double energy = 0;
 
     // --- CHAMADA PARA A GPU (Substitui o loop original) ---
-    spec_advance_cuda(spec->part, spec->np, emf->E, emf->B, current->J_buf, spec->nx, tem, dt_dx, qnx);	//-------------
+    spec_advance_cuda(spec->part, spec->np, emf->E, emf->B, 
+                  &current->J_buf[current->gc[0]], 
+                  spec->nx, tem, dt_dx, qnx);	//-------------
     
     double total_u2 = 0;						//----------
     for (int i = 0; i < spec->np; i++) {
