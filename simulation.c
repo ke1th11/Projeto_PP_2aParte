@@ -45,6 +45,8 @@ int report( int n, int ndump )
  * 
  * @param sim 	EM1D Simulation
  */
+
+/*
 void sim_iter( t_simulation* sim ) {
 	// Advance particles and deposit current
 	current_zero( &sim -> current );
@@ -56,6 +58,21 @@ void sim_iter( t_simulation* sim ) {
 
 	// Advance EM fields
 	emf_advance( &sim -> emf, &sim -> current );
+}
+*/
+
+void sim_iter( t_simulation* sim )
+{
+    // 1. Limpa primeiro
+    current_zero( &sim->current );
+
+    // 2. GPU calcula e preenche a corrente
+    for( int i = 0; i < sim->n_species; i++ )
+        spec_advance( &sim->species[i], &sim->emf, &sim->current );
+
+    // 3. Só depois faz o update e os campos
+    current_update( &sim->current );
+    emf_advance( &sim->emf, &sim->current );
 }
 
 /**
